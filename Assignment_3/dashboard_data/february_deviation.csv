@@ -1,0 +1,5 @@
+metric,platform_name,jan_rate,feb_rate,pct_deviation
+automation_rate,TikTok,95.28111905051173,95.54614543896545,0.28
+automation_rate,X,0.002769162605228179,0.0030175925646519206,8.97
+moderation_intensity,TikTok,4236223.31,6055307.55,42.94
+moderation_intensity,X,2315.11,2124.51,-8.23
