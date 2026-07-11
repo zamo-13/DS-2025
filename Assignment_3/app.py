@@ -1,10 +1,12 @@
 """
-DSA Content Moderation Dashboard — TikTok vs. X (Germany, H1 2025)
-Assignment 3 — Data Visualization course
+DSA Content Moderation Dashboard — TikTok vs. X (EU-wide, H1 2025)
+Assignment 3
 
-Reads 7 pre-aggregated CSVs (see 06_export_dashboard_data.py in the thesis
-repo) from DATA_DIR. Does no raw-data processing itself — every number
-here was computed once, upstream, from the v1/DE-scope parquet files.
+Reads pre-aggregated CSVs (see 07_export_dashboard_data_eu.py) from DATA_DIR.
+
+
+This dashboard asks whether TikTok and X react differently to EU-wide events
+versus globally-relevant ones, using EU-27-scoped data. 
 
 Run:
     streamlit run app.py
@@ -25,11 +27,20 @@ import streamlit as st
 DATA_DIR = Path(os.environ.get("DASHBOARD_DATA_DIR", Path(__file__).parent / "dashboard_data"))
 
 COLORS = {"TikTok": "#0B7C8C", "X": "#4A4A4A"}  # fixed, used identically everywhere
+EVENT_TYPE_COLORS = {"EU": "#8E5FD1", "Global": "#B33A3A"}
 BG = "rgba(0,0,0,0)"
-ELECTION_DATE = pd.Timestamp("2025-02-23")
-RESAMPLE_FREQ = {"Daily": None, "Weekly": "7D"}  # Monthly reads amar_monthly_intensity.csv directly
+RESAMPLE_FREQ = {"Daily": None, "Weekly": "7D", "Monthly": "MS"}
 
-st.set_page_config(page_title="DSA Moderation Dashboard — TikTok vs. X", layout="wide")
+# Same 4 events used to build event_deviation.csv - kept here too so the
+# chart's vlines/annotations line up with the table without re-deriving them.
+EVENTS = [
+    {"name": "Trump 2nd inauguration", "date": "2025-01-20", "type": "Global"},
+    {"name": "EU defense summit (ReArm Europe)", "date": "2025-03-06", "type": "EU"},
+    {"name": "EU retaliatory tariffs vote", "date": "2025-04-09", "type": "EU"},
+    {"name": "Pope Francis's death", "date": "2025-04-21", "type": "Global"},
+]
+
+st.set_page_config(page_title="DSA Moderation Dashboard, TikTok vs. X (EU)", layout="wide")
 
 CHART_LAYOUT = dict(
     plot_bgcolor=BG,
@@ -56,12 +67,22 @@ def load_csv(name: str) -> pd.DataFrame | None:
 
 
 def shorten_category(cat: str) -> str:
-    """Cosmetic-only relabeling of raw DSA category codes for readability.
-    Not the abandoned v1/v2 harmonization — purely a display convenience."""
+    """Cosmetic-only relabeling of raw DSA category codes for readability."""
     if not isinstance(cat, str):
         return str(cat)
-    label = cat.replace("STATEMENT_CATEGORY_", "").replace("_", " ").title()
-    return label
+    return cat.replace("STATEMENT_CATEGORY_", "").replace("_", " ").title()
+
+
+def add_event_markers(fig: go.Figure, y_annotation: float = 1.02) -> go.Figure:
+    """Mark all 4 events on a time-series chart, colour-coded EU vs. Global."""
+    for event in EVENTS:
+        color = EVENT_TYPE_COLORS[event["type"]]
+        fig.add_vline(x=pd.Timestamp(event["date"]), line_dash="dot", line_color=color)
+        fig.add_annotation(
+            x=pd.Timestamp(event["date"]), y=y_annotation, yref="paper", showarrow=False,
+            text=event["name"], font=dict(size=9, color=color), textangle=-90, xanchor="right",
+        )
+    return fig
 
 
 # ---------------------------------------------------------------------------
@@ -70,35 +91,29 @@ def shorten_category(cat: str) -> str:
 cat_dist = load_csv("category_distribution.csv")
 auto_overall = load_csv("automation_rate_overall.csv")
 auto_by_cat = load_csv("automation_rate_by_category.csv")
-gran_dist = load_csv("granularity_distribution.csv")
-gran_other = load_csv("granularity_other_share.csv")
 amar_daily = load_csv("amar_daily_intensity.csv")
-amar_monthly = load_csv("amar_monthly_intensity.csv")
-feb_dev = load_csv("february_deviation.csv")
+event_dev = load_csv("event_deviation.csv")
 
 missing = [
     n for n, df in [
         ("category_distribution.csv", cat_dist),
         ("automation_rate_overall.csv", auto_overall),
         ("automation_rate_by_category.csv", auto_by_cat),
-        ("granularity_distribution.csv", gran_dist),
-        ("granularity_other_share.csv", gran_other),
         ("amar_daily_intensity.csv", amar_daily),
-        ("amar_monthly_intensity.csv", amar_monthly),
-        ("february_deviation.csv", feb_dev),
+        ("event_deviation.csv", event_dev),
     ] if df is None
 ]
 
-st.title("Content Moderation on TikTok and X")
+st.title(" TikTok & X EU-wide Content Moderation")
 st.caption(
-    "Moderation decisions affecting the German information environment, January–June 2025. "
-    "Dataset originates from ongoing bachelor's thesis data collection (DSA Transparency Database)."
+    "Moderation decisions affecting the EU information environment, January–June 2025. "
+    "Dataset originates from the DSA Transparency Database, scoped to the 27 EU member states."
 )
 
 if missing:
     st.warning(
         f"Missing data files in `{DATA_DIR}/`: {', '.join(missing)}. "
-        "Run `06_export_dashboard_data.py` first."
+        "Run `07_export_dashboard_data_eu.py` first."
     )
     st.stop()
 
@@ -116,26 +131,87 @@ if not platforms:
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["Overview", "Platform Comparison", "Reporting Granularity", "Election Window"]
-)
+tab1, tab2, tab3 = st.tabs(["About", "Overview", "Event Reactions"])
 
-# --- Tab 1: Overview -------------------------------------------------------
+# --- Tab 1: About ------------------------------------------------------------
 with tab1:
+    st.markdown(
+        "This Dashboard shows a comparison of how TikTok and X moderated content across the EU in "
+        "the first half of 2025 including how much of it was automated, and whether the two "
+        "platforms react differently to EU-wide political events versus globally-relevant ones."
+    )
+    st.markdown("**Overview**: Shows the automation contrast in decisions made for the moderation, plus what kind of content each platform "
+                "moderates most, side by side on a shared scale.")
+    st.markdown("**Event Reactions**: Shows whether moderation intensity shifts around 2 "
+                "EU-wide events (an EU defense summit, an EU tariffs vote) and 2 "
+                "globally-relevant events (a US presidential inauguration, a Pope's "
+                "death), viewable as Daily, Weekly, or Monthly, with all 4 events marked "
+                "and a deviation-from-baseline table/chart below.")
+    st.markdown("Use the **Platform** filter in the sidebar to show just TikTok, just X, "
+                "or both, on any tab.")
+
+    st.divider()
+    st.subheader("Data & methodology")
+    st.markdown(
+        "The app itself does no data processing. It just reads the 5 CSVs in "
+        "`dashboard_data/`. Those come from `07_export_dashboard_data_eu.py`, included in "
+        "this folder, which did the actual aggregation on raw data."
+    )
+    st.markdown(
+        "**Data Source:** DSA Transparency Database (transparency.dsa.ec.europa.eu), TikTok and X, raw statement-of-reasons "
+        "dumps for the full 2025 calendar year. The "
+        "Transparency Database itself is public (https://code.europa.eu/dsa/transparency-database/dsa-tdb). the raw "
+        "dumps used here are a bulk export of it, not included in this submission "
+        "because of size, but the same underlying data is publicly re-obtainable through "
+        "that site."
+    )
+    st.markdown(
+        "**What the script (07_export_dashboard_data_eu.py) does?:** It filters to the 27 EU member states (matched on the "
+        "`territorial_scope` field. TikTok reports most decisions as one pan-EU/EEA bloc "
+        "string covering all 27 EU states plus Norway and Liechtenstein, X reports one "
+        "country per row) and to 1 Jan – 30 Jun 2025. Everything else is a straight "
+        "group-by-and-count category distribution and automation rate, overall and per "
+        "category. No categories are dropped. Every category "
+        "present in the raw data shows up in the CSVs and in the Overview tab's charts."
+    )
+
+    st.markdown(
+        "**Normalisation made in the tab 'Event Reaction':** Moderation counts are divided by each platform's average "
+        "monthly active recipients (a DSA-mandated disclosure) to get a per-user rate, "
+        "otherwise TikTok's much larger user base makes any raw comparison meaningless. "
+        "TikTok's figure, 169,000,000, is one flat number for the whole H1 2025 period, "
+        "matching how TikTok itself reports it in 6-month blocks. X reports quarterly: "
+        "94,830,300 for Jan–Mar (from X's DSA Transparency Report covering 1 Oct 2024 – "
+        "31 Mar 2025) and 102,004,250 for Apr–Jun (from X's report covering 1 Apr – 30 Jun "
+        "2025) both summed directly from the per-member-state breakdown table in those "
+        "reports, not estimated."
+    )
+    st.markdown(
+        "**The 4 events (Event Reactions tab):** Two EU-wide: the \"ReArm Europe\" defense "
+        "summit (6 March 2025) and the EU's retaliatory tariff vote against the US "
+        "(9 April 2025) both decided at the EU level, not by one member state. Two "
+        "global: Trump's second inauguration (20 January 2025) and Pope Francis's death "
+        "(21 April 2025). For each, the baseline is the mean daily intensity over the 7 "
+        "days before the event, and the \"event window\" is the event date plus the "
+        "following 6 days, so the two are directly comparable as a "
+        "percentage change."
+    )
+
+# --- Tab 2: Overview ---------------------------------------------------------
+with tab2:
     st.subheader("Automation reliance: the headline contrast")
 
     overall_f = auto_overall[auto_overall["platform_name"].isin(platforms)]
     cols = st.columns(len(overall_f) + 1)
     for i, row in enumerate(overall_f.itertuples()):
         cols[i].metric(
-            f"{row.platform_name} — fully automated",
+            f"{row.platform_name}  is fully automated",
             f"{row.fully_automated_pct:.1f}%",
         )
-    total_rows_note = (
+    cols[-1].caption(
         "Automation share of decisions with no human review at any stage, "
-        "v1 period (Jan–Jun 2025), decisions whose territorial scope includes Germany."
+        "H1 2025 (Jan–Jun), decisions whose territorial scope includes an EU member state."
     )
-    cols[-1].caption(total_rows_note)
 
     fig = px.bar(
         overall_f, x="platform_name", y="fully_automated_pct",
@@ -146,37 +222,19 @@ with tab1:
     fig.update_traces(textposition="outside", showlegend=False)
     fig = clean_axes(fig)
     st.plotly_chart(fig, width="stretch")
-    st.caption(
-        "TikTok resolves nearly all German-scoped moderation decisions without human review; "
-        "X does close to none. This gap is the central finding driving the rest of this dashboard."
-    )
 
-# --- Tab 2: Platform Comparison --------------------------------------------
-with tab2:
+    st.divider()
     st.subheader("The two platforms moderate different kinds of content")
 
     cat_f = cat_dist[cat_dist["platform_name"].isin(platforms)].copy()
     cat_f["category_label"] = cat_f["category"].map(shorten_category)
 
-    top_n = st.slider("Show top N categories per platform (rest grouped as 'Other')", 5, 15, 8)
-
-    frames = []
-    for p, grp in cat_f.groupby("platform_name"):
-        grp = grp.sort_values("pct", ascending=False)
-        top = grp.head(top_n).copy()
-        rest_pct = grp["pct"].iloc[top_n:].sum()
-        if rest_pct > 0:
-            top = pd.concat([top, pd.DataFrame(
-                [{"platform_name": p, "category_label": "Other (grouped)", "pct": rest_pct}]
-            )], ignore_index=True)
-        frames.append(top)
-    cat_top = pd.concat(frames, ignore_index=True)
-
-    shared_max = cat_top["pct"].max() * 1.1
+    shared_max = cat_f["pct"].max() * 1.1
+    n_categories = cat_f.groupby("platform_name").size().max()
 
     cols = st.columns(len(platforms))
     for i, p in enumerate(platforms):
-        sub = cat_top[cat_top["platform_name"] == p].sort_values("pct")
+        sub = cat_f[cat_f["platform_name"] == p].sort_values("pct")
         fig = px.bar(
             sub, x="pct", y="category_label", orientation="h",
             color_discrete_sequence=[COLORS.get(p, "#888")],
@@ -184,54 +242,21 @@ with tab2:
             title=p,
         )
         fig.update_xaxes(range=[0, shared_max])  # shared scale = true small multiples
+        fig.update_layout(height=max(320, 24 * n_categories))
         fig = clean_axes(fig)
         cols[i].plotly_chart(fig, width="stretch")
 
     st.caption(
-        "Bars use position/length encoding (not pie charts) for accurate comparison. "
-        "Both panels share the same x-axis scale so proportions are directly comparable."
+        "Every category present in the data is shown and none was left out."
     )
 
-# --- Tab 3: Reporting Granularity -------------------------------------------
+# --- Tab 3: Event Reactions --------------------------------------------------
 with tab3:
-    st.subheader("X never reports a specific outcome; TikTok usually does")
-
-    other_f = gran_other[gran_other["platform_name"].isin(platforms)]
-    cols = st.columns(len(other_f))
-    for i, row in enumerate(other_f.itertuples()):
-        cols[i].metric(
-            f"{row.platform_name} — reports as 'Other'",
-            f"{row.other_visibility_pct:.1f}%",
-            help="Share of decisions with no specific visibility outcome on record.",
-        )
-
-    gran_f = gran_dist[gran_dist["platform_name"].isin(platforms)].copy()
-    gran_f["visibility_label"] = (
-        gran_f["decision_visibility"].fillna("(missing)")
-        .str.replace(r'[\[\]"]', "", regex=True)
-        .str.replace("DECISION_VISIBILITY_", "", regex=False)
-        .str.replace("_", " ").str.title()
-    )
-    gran_f = gran_f[gran_f["pct"] >= 0.3]  # drop noise slivers under 0.3%
-
-    fig = px.bar(
-        gran_f, x="pct", y="platform_name", color="visibility_label",
-        orientation="h",
-        labels={"pct": "% of decisions", "platform_name": ""},
-    )
-    fig = clean_axes(fig)
-    st.plotly_chart(fig, width="stretch")
-
+    st.subheader("How does each platform react to global/EU events?")
     st.caption(
-        "X records a specific outcome for essentially none of its decisions whose territorial scope "
-        "includes Germany; TikTok specifies an outcome (e.g. content removed, age-restricted) most of "
-        "the time. Reporting granularity differs sharply between platforms even where automation "
-        "reliance is held aside."
+        "Two EU-wide events and two globally-relevant events, all in H1 2025. Four events is descriptive pattern-spotting, "
+        "not a statistical test."
     )
-
-# --- Tab 4: Election Window --------------------------------------------------
-with tab4:
-    st.subheader("TikTok's moderation intensity surged into the election; X's didn't")
 
     granularity = st.radio(
         "View by", ["Daily", "Weekly", "Monthly"], index=1, horizontal=True,
@@ -239,51 +264,28 @@ with tab4:
              "Weekly and Monthly smooth that noise out at the cost of hiding single-day shifts.",
     )
     st.caption(
-        "MAR = officially reported Monthly Active Recipients, the normalisation base for both "
-        "charts below. TikTok: 25,700,000 (constant, Jan–Jun 2025). X: 15,598,407 (Jan–Mar 2025), "
-        "14,929,142 (Apr–Jun 2025) — note X's own reported figure changed partway through the period."
+        "MAR = officially reported Monthly Active Recipients, the EU-wide normalisation base. "
+        "TikTok: 169,000,000 (one flat H1 2025 figure, per TikTok's own 6-month reporting "
+        "cadence). X: 94,830,300 (Jan–Mar 2025), 102,004,250 (Apr–Jun 2025) summed directly "
+        "from X's own per-member-state DSA transparency tables."
     )
 
-    if granularity == "Monthly":
-        # Use the official pre-aggregated monthly file directly instead of
-        # resampling the daily file — it's built from the exact same raw
-        # counts, but reading it straight avoids relying on resampling
-        # approximating an already-official aggregate.
-        period_f = amar_monthly[amar_monthly["platform_name"].isin(platforms)].copy()
-        period_f["period"] = pd.to_datetime(period_f["month"], format="%Y-%m")
-        period_f = period_f[["platform_name", "period", "intensity_rate"]]
+    daily_f = amar_daily[amar_daily["platform_name"].isin(platforms)].copy()
+    daily_f["date"] = pd.to_datetime(daily_f["date"])
+
+    freq = RESAMPLE_FREQ[granularity]
+    if freq is None:
+        period_f = daily_f.rename(columns={"date": "period"})[["platform_name", "period", "intensity_rate"]]
     else:
-        daily_f = amar_daily[amar_daily["platform_name"].isin(platforms)].copy()
-        daily_f["date"] = pd.to_datetime(daily_f["date"])
-
-        freq = RESAMPLE_FREQ[granularity]
-        if freq is None:
-            period_f = daily_f.rename(columns={"date": "period"})[["platform_name", "period", "intensity_rate"]]
-        else:
-            # intensity_rate is already normalised per day, so summing it
-            # across a period (rather than re-deriving from raw counts)
-            # gives the correct period rate as long as AMAR is constant
-            # within that period — true for every week here except the one
-            # straddling the X AMAR revision at end of March, a negligible
-            # edge case. "7D" (not the anchored "W") + label="left" keeps bin
-            # edges inside the actual data range (Jan 1 - Jun 30): a
-            # calendar-week frequency would anchor to fixed weekday
-            # boundaries and label a partial trailing/leading bin outside
-            # the real data (e.g. into July).
-            period_f = (
-                daily_f.set_index("date")
-                .groupby("platform_name")["intensity_rate"]
-                .resample(freq, label="left").sum()
-                .reset_index()
-                .rename(columns={"date": "period"})
-            )
-
+        period_f = (
+            daily_f.set_index("date")
+            .groupby("platform_name")["intensity_rate"]
+            .resample(freq, label="left").sum()
+            .reset_index()
+            .rename(columns={"date": "period"})
+        )
     period_f = period_f.sort_values(["platform_name", "period"])
 
-    # TikTok's and X's raw intensity differ by ~1000x, so a shared linear
-    # axis flattens X to an invisible line (see the raw small multiples
-    # below). Indexing both to their first period's value makes the
-    # relative shift around the election comparable at a glance instead.
     baseline = period_f.groupby("platform_name")["intensity_rate"].first()
     period_f["indexed"] = period_f["intensity_rate"] / period_f["platform_name"].map(baseline) * 100
 
@@ -293,11 +295,20 @@ with tab4:
         labels={"indexed": f"Moderation intensity (first {granularity.lower()} period = 100)", "period": ""},
     )
     fig.add_hline(y=100, line_dash="dash", line_color="#BBBBBB")
-    fig.add_vline(x=ELECTION_DATE, line_dash="dot", line_color="#B33A3A")
-    fig.add_annotation(x=ELECTION_DATE, y=1.02, yref="paper", showarrow=False,
-                        text="German snap election (23 Feb)", font=dict(size=11, color="#B33A3A"))
+    fig = add_event_markers(fig)
     fig = clean_axes(fig)
+    fig.update_layout(margin=dict(t=70))
     st.plotly_chart(fig, width="stretch")
+
+    with st.expander("How is this calculated?"):
+        st.markdown(
+            f"Each platform's daily intensity (decisions per million MAR) is divided by its "
+            f"own value on the very first {granularity.lower()} period shown, then multiplied "
+            f"by 100. So a value of 150 means \"50% higher than where this platform started\" "
+            f"it's a relative comparison, not an absolute count. See the About tab for how the "
+            f"underlying intensity number itself is built (AMAR normalisation) and how the "
+            f"event baseline further down is defined."
+        )
 
     st.markdown("**Raw intensity, per platform**")
     raw_cols = st.columns(len(platforms))
@@ -310,40 +321,47 @@ with tab4:
             labels={"intensity_rate": "Decisions per million MAR", "period": ""},
             title=p,
         )
-        fig_raw.add_vline(x=ELECTION_DATE, line_dash="dot", line_color="#B33A3A")
+        fig_raw = add_event_markers(fig_raw)
         fig_raw = clean_axes(fig_raw)
+        fig_raw.update_layout(margin=dict(t=70))
         raw_cols[i].plotly_chart(fig_raw, width="stretch")
     st.caption(
-        "Each platform on its own y-axis, so its actual shape is visible — on the indexed chart "
-        "above, X's real trend is still readable because both platforms share one relative scale; "
-        "on a shared *absolute* scale, TikTok's ~1,000x higher intensity would flatten X into a "
-        "near-invisible line, which is why the two platforms get separate axes here instead."
+        "Each platform on its own y-axis, so its actual shape is visible. TikTok's raw intensity "
+        "is roughly 1,000x higher than X's, which would flatten X into a near-invisible line on a "
+        "shared absolute scale (the indexed chart above avoids that by comparing each platform to "
+        "its own first-period value instead). Purple markers = EU-wide events, red = global events."
     )
 
-    st.markdown("**February vs. January baseline**")
-    dev_f = feb_dev[feb_dev["platform_name"].isin(platforms)].copy()
+    st.markdown("**Deviation from a 7-day pre-event baseline**")
+    dev_f = event_dev[event_dev["platform_name"].isin(platforms)].copy()
 
-    def _format_dev_row(row: pd.Series) -> pd.Series:
-        if row["metric"] == "automation_rate":
-            # 3 decimals (not 2): X's automation rate is ~0.003%, which
-            # would otherwise display as "0.00%" for both Jan and Feb —
-            # looking like no change despite the real +9% shift shown in
-            # the % change column.
-            jan, feb = f"{row['jan_rate']:.3f}%", f"{row['feb_rate']:.3f}%"
-        else:
-            jan, feb = f"{row['jan_rate']:,.2f}", f"{row['feb_rate']:,.2f}"
-        return pd.Series({"January": jan, "February": feb, "% change": f"{row['pct_deviation']:+.1f}%"})
+    fig_dev = px.bar(
+        dev_f, x="event", y="pct_deviation", color="platform_name",
+        facet_col="event_type", barmode="group",
+        color_discrete_map=COLORS,
+        labels={"pct_deviation": "% deviation vs. baseline", "event": "", "event_type": ""},
+    )
+    fig_dev.update_xaxes(matches=None)
+    fig_dev.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+    fig_dev = clean_axes(fig_dev)
+    st.plotly_chart(fig_dev, width="stretch")
 
-    dev_display = dev_f.apply(_format_dev_row, axis=1)
-    dev_display.insert(0, "Platform", dev_f["platform_name"].values)
-    dev_display.insert(0, "Metric", dev_f["metric"].values)
+    dev_display = dev_f.copy()
+    dev_display["baseline_rate"] = dev_display["baseline_rate"].round(2).map("{:,.2f}".format)
+    dev_display["event_rate"] = dev_display["event_rate"].round(2).map("{:,.2f}".format)
+    dev_display["pct_deviation"] = dev_display["pct_deviation"].map("{:+.1f}%".format)
+    dev_display = dev_display.rename(columns={
+        "event": "Event", "event_type": "Type", "platform_name": "Platform",
+        "baseline_rate": "Baseline (7d avg)", "event_rate": "Event week (7d avg)",
+        "pct_deviation": "% deviation",
+    })[["Event", "Type", "Platform", "Baseline (7d avg)", "Event week (7d avg)", "% deviation"]]
     st.dataframe(dev_display, width="stretch", hide_index=True)
 
     st.caption(
-        "Moderation intensity is normalised by each platform's officially reported monthly active "
-        "recipients (AMAR). The indexed scale compares each platform to its own first-period value "
-        "(=100), so the shape of the change is comparable despite TikTok's raw intensity being roughly "
-        "1,000x higher than X's — that gap is exactly why indexed is the default view; switch to "
-        "\"Raw intensity rate\" above to see X's line flatten out and verify this yourself. The table "
-        "below shows the underlying raw monthly rates."
+        "Baseline = mean daily intensity over the 7 days before the event; event window = the "
+        "event date plus the following 6 days. TikTok's largest swing (+49.6%) follows a global "
+        "event (Trump's inauguration); X's largest swing (-44.4%) follows an EU-wide event (the "
+        "defense summit). On a small daily base for X, so treat that particular figure as "
+        "noisier than the others. No consistent \"reacts more to EU\" or \"reacts more to global\" "
+        "pattern holds across both platforms."
     )

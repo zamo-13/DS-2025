@@ -1,0 +1,9 @@
+event,event_type,event_date,platform_name,baseline_rate,event_rate,pct_deviation
+EU defense summit (ReArm Europe),EU,2025-03-06,TikTok,38203.56,37973.87714285714,-0.6
+EU defense summit (ReArm Europe),EU,2025-03-06,X,44.35142857142858,24.645714285714288,-44.43
+EU retaliatory tariffs vote,EU,2025-04-09,TikTok,34731.22714285714,36921.63,6.31
+EU retaliatory tariffs vote,EU,2025-04-09,X,23.337142857142858,21.974285714285713,-5.84
+Pope Francis's death,Global,2025-04-21,TikTok,39184.39428571429,37260.50714285714,-4.91
+Pope Francis's death,Global,2025-04-21,X,22.014285714285712,21.517142857142858,-2.26
+Trump second inauguration,Global,2025-01-20,TikTok,17030.047142857144,25482.652857142857,49.63
+Trump second inauguration,Global,2025-01-20,X,30.965714285714284,25.724285714285713,-16.93

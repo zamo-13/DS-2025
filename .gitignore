@@ -1,3 +1,7 @@
+# Reference-only backup of the pre-rework DE-scoped data, not part of the
+# EU-wide submission
+Assignment_3/dashboard_data_de_backup/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
